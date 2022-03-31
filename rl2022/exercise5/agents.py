@@ -101,15 +101,10 @@ class IndependentQLearningAgents(MultiAgent):
 
         actions = []
 
-        # init values
-        for a in range(self.num_agents):
-            for act in range(self.n_acts[a]):
-                self.q_tables[a][act]
-
         # for each agent
         for a in range(self.num_agents):
             # choose best action to exploit
-            if random.random() < (1 - self.epsilon):
+            if random.random() < (1 - self.epsilon) and len(self.q_tables[a]) != 0:
                 actions.append(max([(v, k) for k, v in self.q_tables[a].items()])[1])
             else:
                 # else explore using random action
@@ -202,9 +197,30 @@ class JointActionLearning(MultiAgent):
         """
         joint_action = []
 
-        # take greedy action
-        if random.random() < (1 - self.epsilon):
+        # list of agent dicts to hold {action : Q_vals}
+        expected_value_list: List[DefaultDict] = [defaultdict(lambda: 0) for _ in range(self.num_agents)]
 
+        # for each of our agents
+        for agent in range(self.num_agents):
+            # for each action
+            for action in range(self.n_acts[agent]):
+                # for every other action, calculate expected value, the sum of joint Q-vals,
+                # weighted by estimated probability joint actions
+                total_C = 0
+                for non_act in range(self.n_acts[1 - action]):
+                    C = self.models[agent][(agent, non_act)]
+                    total_C += self.models[agent][(action, non_act)]
+                    expected_value_list[agent][action] += (C / max(1, total_C)) * self.q_tables[agent][
+                        (action, non_act)]
+
+            # choose best action to exploit
+            if random.random() < (1 - self.epsilon):
+                # get best action for each agent using EV list
+                joint_action = (max(expected_value_list[agent], key=expected_value_list[agent].get) for a in
+                                range(self.num_agents))
+            else:
+                # else explore using random action
+                joint_action = [random.randint(0, self.n_acts[agent] - 1) for agent in range(self.num_agents)]
 
         return joint_action
 
@@ -222,7 +238,30 @@ class JointActionLearning(MultiAgent):
         """
         updated_values = []
 
+        # list of agent dicts to hold {action : Q_vals}
+        expected_value_list: List[DefaultDict] = [defaultdict(lambda: 0) for _ in range(self.num_agents)]
 
+        # for each of our agents
+        for agent in range(self.num_agents):
+            # for each action
+            for action in range(self.n_acts[agent]):
+                # update the model
+                self.models[agent][tuple(actions)] += 1
+
+                # for every other action, calculate expected value, the sum of joint Q-vals,
+                # weighted by estimated probability joint actions
+                total_C = 0
+                for non_act in range(self.n_acts[1 - action]):
+                    C = self.models[agent][(agent, non_act)]
+                    total_C += self.models[agent][(action, non_act)]
+                    expected_value_list[agent][action] += (C / max(1, total_C)) * self.q_tables[agent][
+                        (action, non_act)] * (dones[agent])
+
+                # update Q-values
+                self.q_tables[agent][tuple(actions)] = self.q_tables[agent][tuple(actions)] + self.learning_rate * (
+                            rewards[agent] + self.gamma * max(expected_value_list[agent].values()) -
+                            self.q_tables[agent][tuple(actions)])
+                updated_values.append(self.q_tables[agent][tuple(actions)])
 
         return updated_values
 
@@ -238,4 +277,5 @@ class JointActionLearning(MultiAgent):
         :param max_timestep (int): maximum timesteps that the training loop will run for
         """
 
-        # test
+        self.epsilon = 0.2
+        self.learning_rate = 1e-3

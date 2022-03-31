@@ -10,7 +10,7 @@ from torch.distributions import Normal
 
 from rl2022.exercise3.agents import Agent
 from rl2022.exercise3.networks import FCNetwork
-from rl2022.exercise3.replay import
+from rl2022.exercise3.replay import Transition
 
 
 class DDPG(Agent):
